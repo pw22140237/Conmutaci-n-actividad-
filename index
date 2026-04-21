@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OSI Match - Multilayer Diagnostics</title>
+    <style>
+        :root {
+            --primary-bg: #1e1e2e;
+            --card-bg: #2d2d44;
+            --accent: #89b4fa;
+            --accent-hover: #b4befe;
+            --error: #f38ba8;
+            --success: #a6e3a1;
+            --text: #cdd6f4;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--primary-bg);
+            color: var(--text);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin: 0;
+            padding: 20px;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .stats {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 20px;
+            font-size: 1.2rem;
+            background: #181825;
+            padding: 10px 20px;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 15px;
+            max-width: 900px;
+        }
+
+        .card {
+            width: 200px;
+            height: 140px;
+            perspective: 1000px;
+            cursor: pointer;
+        }
+
+        .card-inner {
+            width: 100%;
+            height: 100%;
+            position: relative;
+            transition: transform 0.6s cubic-bezier(0.4, 0.2, 0.2, 1);
+            transform-style: preserve-3d;
+        }
+
+        .card.flipped .card-inner {
+            transform: rotateY(180deg);
+        }
+
+        .card-front, .card-back {
+            width: 100%;
+            height: 100%;
+            position: absolute;
+            backface-visibility: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 15px;
+            box-sizing: border-box;
+            border-radius: 12px;
+            border: 2px solid #45475a;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        }
+
+        .card-front {
+            background-color: #585b70;
+            font-size: 2.5rem;
+        }
+
+        .card-front:hover {
+            border-color: var(--accent);
+        }
+
+        .card-back {
+            background-color: var(--card-bg);
+            transform: rotateY(180deg);
+            font-size: 0.95rem;
+            font-weight: bold;
+        }
+
+        .card.matched .card-inner {
+            transform: rotateY(180deg);
+        }
+
+        .card.matched .card-back {
+            border-color: var(--success);
+            color: var(--success);
+            box-shadow: 0 0 15px rgba(166, 227, 161, 0.2);
+        }
+
+        .btn-restart {
+            margin-top: 30px;
+            padding: 12px 24px;
+            font-size: 1rem;
+            background-color: var(--accent);
+            color: #11111b;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: background 0.3s;
+        }
+
+        .btn-restart:hover {
+            background-color: var(--accent-hover);
+        }
+
+        .modal-overlay {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(17, 17, 27, 0.7); 
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            visibility: hidden; 
+            opacity: 0;
+            transition: opacity 0.3s ease, visibility 0.3s;
+        }
+
+        .modal-overlay.active {
+            visibility: visible;
+            opacity: 1;
+        }
+
+        .modal-box {
+            background: #313244;
+            padding: 30px;
+            border-radius: 15px;
+            width: 90%;
+            max-width: 400px;
+            text-align: center;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.8);
+            border: 1px solid #45475a;
+            transform: translateY(-20px);
+            transition: transform 0.3s ease;
+        }
+
+        .modal-overlay.active .modal-box {
+            transform: translateY(0);
+        }
+
+        .modal-box h2 { margin-top: 0; color: var(--accent); }
+        
+        .modal-input {
+            width: 80%;
+            padding: 10px;
+            margin: 15px 0;
+            border-radius: 5px;
+            border: 1px solid #585b70;
+            background: #1e1e2e;
+            color: #fff;
+            font-size: 1.1rem;
+            text-align: center;
+            outline: none;
+        }
+
+        .modal-input:focus { border-color: var(--accent); }
+
+        .modal-btn {
+            padding: 10px 20px;
+            background: var(--success);
+            color: #111;
+            border: none;
+            border-radius: 5px;
+            font-weight: bold;
+            cursor: pointer;
+            font-size: 1rem;
+        }
+        
+        .modal-msg { margin-top: 15px; font-weight: bold; height: 20px; }
+        .text-error { color: var(--error); }
+        .text-success { color: var(--success); }
+
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h1>OSI Match: Comprehensive Diagnostics</h1>
+        <p>Find the pair. The system will validate if you know which OSI layer it belongs to.</p>
+    </div>
+
+    <div class="stats">
+        <div>Attempts: <span id="attempts">0</span></div>
+        <div>Validated Pairs: <span id="matches">0</span>/8</div>
+    </div>
+
+    <div class="grid" id="game-board"></div>
+    <button class="btn-restart" onclick="initGame()">Restart Game</button>
+
+    <div class="modal-overlay" id="validationModal">
+        <div class="modal-box">
+            <h2>Pair Found! 🧩</h2>
+            <p>Enter the <b>NUMBER</b> (1, 2, 3, or 4) of the OSI model layer this problem belongs to:</p>
+            <input type="text" id="layerInput" class="modal-input" placeholder="Ex: 2" autocomplete="off">
+            <br>
+            <button class="modal-btn" onclick="validateAnswer()">Validate</button>
+            <div class="modal-msg" id="modalMessage"></div>
+        </div>
+    </div>
+
+    <script>
+        const pairsData = [
+            // --- LAYER 1 (Physical) ---
+            { id: 1, text: 'Performance lower than baseline', matchId: 1, layer: 1, icon: '❓' },
+            { id: 1, text: 'Signal attenuation', matchId: 1, layer: 1, icon: '❓' },
+            { id: 2, text: 'Total loss of connectivity', matchId: 2, layer: 1, icon: '❓' },
+            { id: 2, text: 'Cabling faults', matchId: 2, layer: 1, icon: '❓' },
+            
+            // --- LAYER 2 (Data Link) ---
+            { id: 3, text: 'Excessive network broadcasts', matchId: 3, layer: 2, icon: '❓' },
+            { id: 3, text: 'STP failures or loops', matchId: 3, layer: 2, icon: '❓' },
+            { id: 4, text: 'No functionality from network layer upwards', matchId: 4, layer: 2, icon: '❓' },
+            { id: 4, text: 'Encapsulation errors', matchId: 4, layer: 2, icon: '❓' },
+
+            // --- LAYER 3 (Network) ---
+            { id: 5, text: 'Missing or unidentified routes', matchId: 5, layer: 3, icon: '❓' },
+            { id: 5, text: 'Routing Table issues', matchId: 5, layer: 3, icon: '❓' },
+            { id: 6, text: 'Blocked by hidden rule at the end of the list', matchId: 6, layer: 3, icon: '❓' },
+            { id: 6, text: 'Implicit deny any (ACL)', matchId: 6, layer: 3, icon: '❓' },
+
+            // --- LAYER 4 (Transport) ---
+            { id: 7, text: 'Specifying both protocols opens security gaps', matchId: 7, layer: 4, icon: '❓' },
+            { id: 7, text: 'Poor protocol selection (TCP/UDP)', matchId: 7, layer: 4, icon: '❓' },
+            { id: 8, text: 'Asymmetry in host response traffic', matchId: 8, layer: 4, icon: '❓' },
+            { id: 8, text: 'Incorrect source and destination ports', matchId: 8, layer: 4, icon: '❓' }
+        ];
+
+        let hasFlippedCard = false;
+        let lockBoard = false;
+        let firstCard, secondCard;
+        let attempts = 0;
+        let matches = 0;
+        let expectedLayer = 0; 
+
+        const board = document.getElementById('game-board');
+        const attemptsDisplay = document.getElementById('attempts');
+        const matchesDisplay = document.getElementById('matches');
+        const modal = document.getElementById('validationModal');
+        const layerInput = document.getElementById('layerInput');
+        const modalMessage = document.getElementById('modalMessage');
+
+        function shuffle(array) {
+            for (let i = array.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [array[i], array[j]] = [array[j], array[i]];
+            }
+            return array;
+        }
+
+        function initGame() {
+            board.innerHTML = '';
+            attempts = 0;
+            matches = 0;
+            attemptsDisplay.textContent = attempts;
+            matchesDisplay.textContent = matches;
+            closeModal();
+            resetBoard();
+
+            const shuffledCards = shuffle([...pairsData]);
+
+            shuffledCards.forEach(cardData => {
+                const cardElement = document.createElement('div');
+                cardElement.classList.add('card');
+                cardElement.dataset.matchId = cardData.matchId;
+                cardElement.dataset.layer = cardData.layer;
+
+                cardElement.innerHTML = `
+                    <div class="card-inner">
+                        <div class="card-front">${cardData.icon}</div>
+                        <div class="card-back">${cardData.text}</div>
+                    </div>
+                `;
+
+                cardElement.addEventListener('click', flipCard);
+                board.appendChild(cardElement);
+            });
+        }
+
+        function flipCard() {
+            if (lockBoard) return;
+            if (this === firstCard) return;
+
+            this.classList.add('flipped');
+
+            if (!hasFlippedCard) {
+                hasFlippedCard = true;
+                firstCard = this;
+                return;
+            }
+
+            secondCard = this;
+            attempts++;
+            attemptsDisplay.textContent = attempts;
+            
+            lockBoard = true; 
+            checkForMatch();
+        }
+
+        function checkForMatch() {
+            let isMatch = firstCard.dataset.matchId === secondCard.dataset.matchId;
+
+            if (isMatch) {
+                expectedLayer = parseInt(firstCard.dataset.layer);
+                setTimeout(openModal, 1500); 
+            } else {
+                setTimeout(unflipCards, 1500);
+            }
+        }
+
+        function openModal() {
+            layerInput.value = '';
+            modalMessage.textContent = '';
+            modalMessage.className = 'modal-msg';
+            modal.classList.add('active');
+            
+            setTimeout(() => {
+                layerInput.focus();
+            }, 100); 
+        }
+
+        function closeModal() {
+            modal.classList.remove('active');
+        }
+
+        layerInput.addEventListener("keypress", function(event) {
+            if (event.key === "Enter") {
+                event.preventDefault();
+                validateAnswer();
+            }
+        });
+
+        function validateAnswer() {
+            let answer = layerInput.value.trim().toLowerCase();
+            
+            let isCorrect = false;
+            if (expectedLayer === 1 && (answer === "1" || answer.includes("physical"))) { isCorrect = true; }
+            if (expectedLayer === 2 && (answer === "2" || answer.includes("data link") || answer.includes("link"))) { isCorrect = true; }
+            if (expectedLayer === 3 && (answer === "3" || answer.includes("network"))) { isCorrect = true; }
+            if (expectedLayer === 4 && (answer === "4" || answer.includes("transport"))) { isCorrect = true; }
+
+            if (isCorrect) {
+                modalMessage.textContent = `Correct! It is Layer ${expectedLayer}.`;
+                modalMessage.className = 'modal-msg text-success';
+                setTimeout(() => {
+                    closeModal();
+                    disableCards();
+                    matches++;
+                    matchesDisplay.textContent = matches;
+                    
+                    if (matches === 8) { 
+                        setTimeout(() => alert(`Diagnostics successfully completed in ${attempts} attempts!`), 500);
+                    }
+                }, 1000);
+            } else {
+                modalMessage.textContent = `Incorrect. It is not Layer ${answer || 'indicated'}.`;
+                modalMessage.className = 'modal-msg text-error';
+                setTimeout(() => {
+                    closeModal();
+                    unflipCards();
+                }, 1500);
+            }
+        }
+
+        function disableCards() {
+            firstCard.removeEventListener('click', flipCard);
+            secondCard.removeEventListener('click', flipCard);
+            firstCard.classList.add('matched');
+            secondCard.classList.add('matched');
+            resetBoard();
+        }
+
+        function unflipCards() {
+            firstCard.classList.remove('flipped');
+            secondCard.classList.remove('flipped');
+            resetBoard();
+        }
+
+        function resetBoard() {
+            [hasFlippedCard, lockBoard] = [false, false];
+            [firstCard, secondCard] = [null, null];
+        }
+
+        initGame();
+    </script>
+</body>
+</html>
